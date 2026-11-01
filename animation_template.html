@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pole lap comparison</title>
+<style>
+:root {
+  --bg: #0b0d12; --panel: #12151c; --line: #232836; --txt: #e8ebf2; --mut: #8a93a6; --warn: #ffd23f;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+.wrap { max-width: 1280px; margin: 0 auto; padding: 18px 16px 28px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+.sub { color: var(--mut); font-size: 13px; margin-top: 4px; }
+.grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; margin-top: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; position: relative; overflow: hidden; }
+.card h3 {
+  position: absolute; left: 14px; top: 10px; z-index: 2; margin: 0;
+  font-size: 11px; letter-spacing: 1.4px; color: var(--mut); text-transform: uppercase;
+}
+canvas { display: block; width: 100%; }
+#map, #cam { height: 430px; }
+#strip { height: 150px; }
+.hud { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; margin-top: 12px; }
+.drv { padding: 14px 16px; }
+.drv .name { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.spd { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 6px; }
+.spd small { font-size: 13px; color: var(--mut); font-weight: 500; margin-left: 4px; }
+.row { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--mut); }
+.bar { flex: 1; height: 8px; background: #1d2230; border-radius: 5px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: #22c55e; transition: width .05s; }
+.lamp { padding: 3px 9px; border-radius: 6px; background: #1d2230; color: var(--mut); font-weight: 700; font-size: 11px; letter-spacing: 1px; }
+.lamp.on { background: #ef4444; color: #fff; box-shadow: 0 0 14px #ef444488; }
+.gear { font-weight: 700; color: var(--txt); font-size: 14px; }
+.tp { width: 34px; text-align: right; }
+.mid { padding: 14px 22px; text-align: center; min-width: 230px; }
+.clock { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lead { margin-top: 6px; font-size: 13px; color: var(--mut); }
+.gapbig { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.banner {
+  position: absolute; left: 50%; top: 44px; z-index: 3; transform: translateX(-50%);
+  padding: 8px 14px; border-radius: 10px; background: var(--warn); color: #111;
+  font-weight: 800; font-size: 14px; white-space: nowrap;
+  opacity: 0; transition: opacity .25s; box-shadow: 0 6px 24px #0008;
+}
+.banner.show { opacity: 1; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+button, .chip {
+  background: #1a1f2b; color: var(--txt); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 14px; font: inherit; font-size: 13px; cursor: pointer;
+}
+button:hover, .chip:hover { border-color: #3a4256; }
+.chip.on { background: var(--txt); color: #111; border-color: var(--txt); }
+#play { min-width: 92px; font-weight: 700; }
+input[type=range] { flex: 1; min-width: 180px; accent-color: #e8ebf2; }
+.note { color: var(--mut); font-size: 12px; margin-top: 14px; line-height: 1.55; }
+.final {
+  position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #0b0d12d9; opacity: 0; pointer-events: none; transition: opacity .4s;
+}
+.final.show { opacity: 1; }
+.final b { font-size: 30px; }
+.final span { color: var(--mut); margin-top: 6px; }
+@media (max-width: 860px) {
+  .grid { grid-template-columns: 1fr; }
+  .hud { grid-template-columns: 1fr 1fr; }
+  .mid { grid-column: 1 / -1; order: -1; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="ttl"></h1>
+  <div class="sub" id="subt"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Track map · colour = who was faster there</h3>
+      <canvas id="map"></canvas>
+      <div class="final" id="final"><b id="finalTxt"></b><span id="finalSub"></span></div>
+    </div>
+    <div class="card">
+      <h3>Chase cam · zoomed to about 140 m</h3>
+      <div class="banner" id="banner"></div>
+      <canvas id="cam"></canvas>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="card drv" id="h0"></div>
+    <div class="card mid">
+      <div class="clock" id="clock">0.000</div>
+      <div class="lead" id="leadTxt">Lights out</div>
+      <div class="gapbig" id="gapTxt">+0.000 s</div>
+    </div>
+    <div class="card drv" id="h1"></div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3>Time gap around the lap</h3>
+    <canvas id="strip"></canvas>
+  </div>
+
+  <div class="controls">
+    <button id="play">▶ Play</button>
+    <button id="restart">↺ Restart</button>
+    <span id="rates"></span>
+    <input type="range" id="scrub" min="0" value="0">
+  </div>
+
+  <div class="note" id="note"></div>
+</div>
+
+<script>
+'use strict';
+
+const DATA = __DATA__;
+const [CAR_A, CAR_B] = DATA.drivers;
+const CARS = [CAR_A, CAR_B];
+const FRAMES = DATA.n;
+const RATES = [0.1, 0.25, 0.5, 1];
+const FONT = '"Segoe UI", sans-serif';
+const MUTED = '#5b6478';
+const SOFT = '#c9cfdb';
+const PANEL = '#12151c';
+
+const CAM_SPAN_M = 140;
+const TRACK_WIDTH_M = 14;
+const TRAIL_FRAMES = 24;          // 1.2 s of lap time
+const HEADING_WINDOW = 3;         // frames either side when measuring direction
+const LABEL_OFFSET_PX = 26;
+const CAR_ENLARGE = 1.7;
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function formatLapTime(s) {
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - 60 * m).toFixed(3).padStart(6, '0')}`;
+}
+
+/* Position at a fractional frame, so cars glide between the 20 frames per second of data. */
+function positionAt(car, frame) {
+  const i = Math.min(Math.floor(frame), FRAMES - 1);
+  const j = Math.min(i + 1, FRAMES - 1);
+  const k = frame - i;
+  return [car.x[i] + (car.x[j] - car.x[i]) * k, car.y[i] + (car.y[j] - car.y[i]) * k];
+}
+
+/* Direction of travel on screen, where y points down. */
+function headingAt(car, frame) {
+  const i = Math.round(frame);
+  const to = Math.min(i + HEADING_WINDOW, FRAMES - 1);
+  const from = Math.max(to - 2 * HEADING_WINDOW, 0);
+  return Math.atan2(-(car.y[to] - car.y[from]), car.x[to] - car.x[from]);
+}
+
+function activeEvent(distance) {
+  return DATA.events.find((e) => distance >= e.from && distance <= e.to);
+}
+
+function trailingDistance(frame) {
+  return Math.min(CAR_A.d[frame], CAR_B.d[frame]);
+}
+
+/* ---- Geometry that never changes, built once in map units ---- */
+
+function linePath(xs, ys, keep = () => true) {
+  const path = new Path2D();
+  let started = false;
+  xs.forEach((x, i) => {
+    if (!keep(i)) return;
+    if (started) path.lineTo(x, ys[i]);
+    else { path.moveTo(x, ys[i]); started = true; }
+  });
+  return path;
+}
+
+const TRACK_PATH = linePath(DATA.track.x, DATA.track.y);
+const SECTOR_PATHS = DATA.dom.winner.map((_, s) => {
+  const from = DATA.dom.edges[s];
+  const to = DATA.dom.edges[s + 1] + 8;
+  return linePath(DATA.track.x, DATA.track.y, (i) => DATA.track.d[i] >= from && DATA.track.d[i] <= to);
+});
+const BOUNDS = {
+  minX: Math.min(...DATA.track.x), maxX: Math.max(...DATA.track.x),
+  minY: Math.min(...DATA.track.y), maxY: Math.max(...DATA.track.y),
+};
+const GAP_RANGE = (() => {
+  const lo = Math.min(0, ...DATA.gapCurve.g);
+  const hi = Math.max(...DATA.gapCurve.g);
+  const pad = (hi - lo) * 0.1;
+  return { lo: lo - pad, hi: hi + pad };
+})();
+
+/* Plan view of a single seater in metres, nose towards +x. It is drawn at CAR_ENLARGE times
+   life size on the chase cam, as a true size car is only a few pixels wide at this zoom. */
+const CAR_BODY = new Path2D(
+  'M2.7 0 L1.2 .16 L.4 .28 L-.2 .62 L-1.4 .48 L-2.2 .18 L-2.2 -.18 L-1.4 -.48 L-.2 -.62 L.4 -.28 L1.2 -.16 Z'
+);
+const CAR_WHEELS = new Path2D();
+[[1.4, .82, .7, .36], [1.4, -.82, .7, .36], [-1.7, .78, .7, .42], [-1.7, -.78, .7, .42]].forEach(([x, y, l, w]) => {
+  CAR_WHEELS.rect(x - l / 2, y - w / 2, l, w);
+});
+const CAR_FRONT_WING = new Path2D();
+CAR_FRONT_WING.rect(2.3, -.95, .3, 1.9);
+const CAR_REAR_WING = new Path2D();
+CAR_REAR_WING.rect(-2.8, -.5, .35, 1);
+
+/* ---- Canvases ---- */
+
+const VIEW = { map: null, cam: null, strip: null };
+
+function setupCanvas(canvas) {
+  const box = canvas.getBoundingClientRect();
+  const ratio = devicePixelRatio || 1;
+  canvas.width = box.width * ratio;
+  canvas.height = box.height * ratio;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  return { ctx, w: box.width, h: box.height };
+}
+
+function resize() {
+  VIEW.map = setupCanvas($('map'));
+  VIEW.cam = setupCanvas($('cam'));
+  VIEW.strip = setupCanvas($('strip'));
+}
+
+/* ---- Track map ---- */
+
+function mapFit({ w, h }) {
+  const pad = 36;
+  const spanX = BOUNDS.maxX - BOUNDS.minX;
+  const spanY = BOUNDS.maxY - BOUNDS.minY;
+  const scale = Math.min((w - 2 * pad) / spanX, (h - 2 * pad - 14) / spanY);
+  const ox = (w - scale * spanX) / 2;
+  const oy = (h - scale * spanY) / 2 + 8;
+  return {
+    scale,
+    toScreen: (x, y) => [ox + (x - BOUNDS.minX) * scale, oy + (BOUNDS.maxY - y) * scale],
+    apply: (ctx) => {
+      ctx.translate(ox, oy);
+      ctx.scale(scale, -scale);
+      ctx.translate(-BOUNDS.minX, -BOUNDS.maxY);
+    },
+  };
+}
+
+function drawMap(frame) {
+  const view = VIEW.map;
+  const { ctx } = view;
+  const fit = mapFit(view);
+  const whole = Math.floor(frame);
+  const done = trailingDistance(whole);
+  ctx.clearRect(0, 0, view.w, view.h);
+
+  ctx.save();
+  fit.apply(ctx);
+  ctx.strokeStyle = '#262c3a';
+  ctx.lineWidth = 11 / fit.scale;
+  ctx.stroke(TRACK_PATH);
+  /* Mini sectors colour in only once both cars have finished them. */
+  ctx.lineWidth = 6 / fit.scale;
+  SECTOR_PATHS.forEach((path, s) => {
+    if (DATA.dom.edges[s + 1] > done) return;
+    ctx.strokeStyle = CARS[DATA.dom.winner[s]].color;
+    ctx.stroke(path);
+  });
+  ctx.restore();
+
+  ctx.fillStyle = MUTED;
+  ctx.font = `600 10px ${FONT}`;
+  ctx.textAlign = 'center';
+  DATA.corners.forEach((c) => {
+    const [x, y] = fit.toScreen(c.x, c.y);
+    ctx.fillText(c.n, x, y - 12);
+  });
+
+  const [startX, startY] = fit.toScreen(DATA.track.x[0], DATA.track.y[0]);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(startX - 1, startY - 9, 2, 18);
+
+  /* The trailing car first, so the leader sits on top. */
+  const order = CAR_A.d[whole] >= CAR_B.d[whole] ? [CAR_B, CAR_A] : [CAR_A, CAR_B];
+  order.forEach((car) => {
+    const [x, y] = fit.toScreen(...positionAt(car, frame));
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = car.color;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = PANEL;
+    ctx.stroke();
+  });
+
+  ctx.font = `600 12px ${FONT}`;
+  ctx.textAlign = 'left';
+  [[CAR_A, 16], [CAR_B, 70]].forEach(([car, x]) => {
+    ctx.fillStyle = car.color;
+    ctx.fillRect(x, view.h - 24, 12, 12);
+    ctx.fillStyle = SOFT;
+    ctx.fillText(car.code, x + 17, view.h - 14);
+  });
+}
+
+/* ---- Chase cam ---- */
+
+function drawCarBody(ctx, x, y, heading, metres, car, braking) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+  ctx.scale(metres, metres);
+  ctx.fillStyle = '#8c95a8';
+  ctx.fill(CAR_WHEELS);
+  ctx.fillStyle = car.color;
+  ctx.fill(CAR_BODY);
+  ctx.fill(CAR_FRONT_WING);
+  ctx.fillStyle = braking ? '#ff3b3b' : car.color;
+  ctx.fill(CAR_REAR_WING);
+  ctx.restore();
+}
+
+function drawTrail(ctx, car, frame, toScreen) {
+  const end = Math.floor(frame);
+  const start = Math.max(0, end - TRAIL_FRAMES);
+  ctx.strokeStyle = car.color;
+  ctx.lineWidth = 1.5;
+  for (let i = start; i < end; i++) {
+    ctx.globalAlpha = 0.55 * (i - start + 1) / TRAIL_FRAMES;
+    const [x1, y1] = toScreen(car.x[i], car.y[i]);
+    const [x2, y2] = toScreen(car.x[i + 1], car.y[i + 1]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* Each braking point is a thin line across the track, labelled outside its edge. */
+function drawBrakeMarks(ctx, event, toScreen, trackWidth) {
+  event.marks.forEach((mark, n) => {
+    const car = mark.code === CAR_A.code ? CAR_A : CAR_B;
+    let k = DATA.track.d.findIndex((d) => d >= mark.d);
+    if (k < 0) k = DATA.track.d.length - 1;
+    const near = Math.max(k - 3, 0);
+    const far = Math.min(k + 3, DATA.track.d.length - 1);
+    const across = Math.atan2(-(DATA.track.y[far] - DATA.track.y[near]), DATA.track.x[far] - DATA.track.x[near]) + Math.PI / 2;
+    const [x, y] = toScreen(DATA.track.x[k], DATA.track.y[k]);
+    const half = trackWidth / 2;
+    const dx = Math.cos(across);
+    const dy = Math.sin(across);
+    ctx.strokeStyle = car.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - dx * half, y - dy * half);
+    ctx.lineTo(x + dx * half, y + dy * half);
+    ctx.stroke();
+    /* The labels take opposite sides of the track, as the two lines can be close together. */
+    const side = n === 0 ? -1 : 1;
+    ctx.fillStyle = car.color;
+    ctx.font = `500 11px ${FONT}`;
+    ctx.textAlign = dx * side > 0 ? 'left' : 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${car.code} brakes`, x + dx * side * (half + 8), y + dy * side * (half + 8));
+    ctx.textBaseline = 'alphabetic';
+  });
+}
+
+function drawCam(frame) {
+  const view = VIEW.cam;
+  const { ctx, w, h } = view;
+  const whole = Math.floor(frame);
+  ctx.clearRect(0, 0, w, h);
+
+  const [ax, ay] = positionAt(CAR_A, frame);
+  const [bx, by] = positionAt(CAR_B, frame);
+  const cx = (ax + bx) / 2;
+  const cy = (ay + by) / 2;
+  const scale = Math.min(w, h * 1.3) / (CAM_SPAN_M / DATA.mPerUnit);
+  const pxPerMetre = scale / DATA.mPerUnit;
+  const toScreen = (x, y) => [w / 2 + (x - cx) * scale, h / 2 + 10 + (cy - y) * scale];
+  const trackWidth = TRACK_WIDTH_M * pxPerMetre;
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2 + 10);
+  ctx.scale(scale, -scale);
+  ctx.translate(-cx, -cy);
+  ctx.strokeStyle = '#2a3040';
+  ctx.lineWidth = (trackWidth + 6) / scale;
+  ctx.stroke(TRACK_PATH);
+  ctx.strokeStyle = '#1a1e28';
+  ctx.lineWidth = trackWidth / scale;
+  ctx.stroke(TRACK_PATH);
+  ctx.restore();
+
+  const event = activeEvent(trailingDistance(whole));
+  if (event) drawBrakeMarks(ctx, event, toScreen, trackWidth);
+
+  CARS.forEach((car) => drawTrail(ctx, car, frame, toScreen));
+
+  CARS.forEach((car, n) => {
+    const [x, y] = toScreen(...positionAt(car, frame));
+    const heading = headingAt(car, frame);
+    drawCarBody(ctx, x, y, heading, pxPerMetre * CAR_ENLARGE, car, car.brk[whole] > 0.5);
+    /* One label to each side of the direction of travel, so they never sit on each other. */
+    const side = n === 0 ? -1 : 1;
+    ctx.fillStyle = SOFT;
+    ctx.font = `500 11px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(car.code, x - Math.sin(heading) * side * LABEL_OFFSET_PX, y + Math.cos(heading) * side * LABEL_OFFSET_PX);
+    ctx.textBaseline = 'alphabetic';
+  });
+
+  const apart = Math.abs(CAR_A.d[whole] - CAR_B.d[whole]);
+  const leader = CAR_A.d[whole] >= CAR_B.d[whole] ? CAR_A : CAR_B;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = SOFT;
+  ctx.font = `600 13px ${FONT}`;
+  ctx.fillText(apart < 0.5 ? 'Side by side' : `${leader.code} ahead by about ${Math.round(apart)} m`, 14, h - 16);
+  ctx.fillStyle = MUTED;
+  ctx.font = `11px ${FONT}`;
+  ctx.textAlign = 'right';
+  ctx.fillText('Ghost cars: two separate laps, same clock', w - 14, h - 16);
+}
+
+/* ---- Gap chart ---- */
+
+function drawStrip(frame) {
+  const view = VIEW.strip;
+  const { ctx } = view;
+  const [left, right, top, bottom] = [46, 14, 34, 22];
+  const plotW = view.w - left - right;
+  const plotH = view.h - top - bottom;
+  const { lo, hi } = GAP_RANGE;
+  const { d: dist, g: gap } = DATA.gapCurve;
+  const X = (v) => left + v / DATA.lapLen * plotW;
+  const Y = (v) => top + (hi - v) / (hi - lo) * plotH;
+  ctx.clearRect(0, 0, view.w, view.h);
+
+  DATA.holes.forEach((hole) => {
+    const car = hole.code === CAR_A.code ? CAR_A : CAR_B;
+    ctx.fillStyle = `${car.color}22`;
+    ctx.fillRect(X(hole.from), top, X(hole.to) - X(hole.from), plotH);
+  });
+
+  ctx.strokeStyle = '#3a4256';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(left, Y(0));
+  ctx.lineTo(left + plotW, Y(0));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#8a93a6';
+  ctx.font = `11px ${FONT}`;
+  ctx.textAlign = 'right';
+  ctx.fillText(`${hi.toFixed(2)} s`, left - 6, top + 8);
+  ctx.fillText('0', left - 6, Y(0) + 4);
+  ctx.textAlign = 'left';
+  ctx.fillText(`↑ ${CAR_B.code} behind ${CAR_A.code}`, left + 6, top + 10);
+  ctx.textAlign = 'center';
+  for (let m = 0; m < DATA.lapLen; m += 1000) ctx.fillText(`${m} m`, X(m), view.h - 6);
+
+  const done = trailingDistance(Math.floor(frame));
+  const trace = (limit) => {
+    ctx.beginPath();
+    for (let i = 0; i < dist.length && dist[i] <= limit; i++) {
+      if (i) ctx.lineTo(X(dist[i]), Y(gap[i]));
+      else ctx.moveTo(X(dist[i]), Y(gap[i]));
+    }
+    ctx.stroke();
+  };
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#3a4256';
+  trace(Infinity);
+  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = '#e8ebf2';
+  trace(done);
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(X(done), top);
+  ctx.lineTo(X(done), top + plotH);
+  ctx.stroke();
+}
+
+/* ---- Readouts ---- */
+
+function updateReadouts(frame) {
+  CARS.forEach((car, k) => {
+    const throttle = clamp(car.thr[frame], 0, 100);
+    $(`v${k}`).textContent = Math.round(car.v[frame]);
+    $(`g${k}`).textContent = Math.round(car.g[frame]);
+    $(`t${k}`).style.width = `${throttle}%`;
+    $(`tp${k}`).textContent = `${Math.round(throttle)}%`;
+    $(`b${k}`).classList.toggle('on', car.brk[frame] > 0.5);
+  });
+
+  const time = frame * DATA.step;
+  const gap = DATA.gap[frame];
+  const leader = gap >= 0 ? CAR_A : CAR_B;
+  $('clock').textContent = time.toFixed(3);
+  $('gapTxt').textContent = `${gap >= 0 ? '+' : '−'}${Math.abs(gap).toFixed(3)} s`;
+  $('gapTxt').style.color = leader.color;
+  $('leadTxt').textContent = Math.abs(gap) < 0.0005 ? 'Dead level' : `${leader.code} leads on the road`;
+
+  const event = activeEvent(trailingDistance(frame));
+  $('banner').textContent = event ? event.text : '';
+  $('banner').classList.toggle('show', Boolean(event));
+
+  const pole = CAR_A.laptime <= CAR_B.laptime ? CAR_A : CAR_B;
+  const other = pole === CAR_A ? CAR_B : CAR_A;
+  $('finalTxt').textContent = `POLE: ${pole.code}`;
+  $('finalTxt').style.color = pole.color;
+  $('finalSub').textContent = `by ${(other.laptime - pole.laptime).toFixed(3)} s over ${other.code}`;
+  $('final').classList.toggle('show', time > Math.max(CAR_A.laptime, CAR_B.laptime));
+}
+
+/* ---- Playback ---- */
+
+const player = { frame: 0, playing: false, rate: 1, lastTick: null };
+
+function render() {
+  const whole = Math.floor(player.frame);
+  drawMap(player.frame);
+  drawCam(player.frame);
+  drawStrip(player.frame);
+  updateReadouts(whole);
+  $('scrub').value = whole;
+}
+
+function setPlaying(playing) {
+  player.playing = playing;
+  player.lastTick = null;
+  $('play').textContent = playing ? '❚❚ Pause' : '▶ Play';
+  if (playing) requestAnimationFrame(tick);
+}
+
+function tick(now) {
+  if (!player.playing) return;
+  if (player.lastTick !== null) {
+    const elapsed = (now - player.lastTick) / 1000;
+    player.frame = Math.min(FRAMES - 1, player.frame + elapsed * player.rate / DATA.step);
+    if (player.frame >= FRAMES - 1) setPlaying(false);
+  }
+  player.lastTick = now;
+  render();
+  if (player.playing) requestAnimationFrame(tick);
+}
+
+function seek(frame) {
+  player.frame = frame;
+  player.lastTick = null;
+  render();
+}
+
+function buildPage() {
+  $('ttl').textContent = `${DATA.title}: ${CAR_A.code} vs ${CAR_B.code} pole lap comparison`;
+  $('subt').textContent = `${CAR_A.code} ${formatLapTime(CAR_A.laptime)}   ·   ${CAR_B.code} ${formatLapTime(CAR_B.laptime)}   ·   official gap ${DATA.officialGap.toFixed(3)} s`;
+
+  CARS.forEach((car, k) => {
+    $(`h${k}`).innerHTML = `
+      <div class="name"><span class="dot" style="background:${car.color}"></span>${car.code}</div>
+      <div class="spd"><span id="v${k}">0</span><small>km/h</small></div>
+      <div class="row">Gear <span class="gear" id="g${k}">-</span><span class="lamp" id="b${k}">BRAKE</span></div>
+      <div class="row">Throttle <div class="bar"><i id="t${k}"></i></div><span class="tp" id="tp${k}">0%</span></div>`;
+  });
+
+  $('rates').innerHTML = RATES.map((r) => `<span class="chip${r === player.rate ? ' on' : ''}" data-r="${r}">${r}×</span>`).join(' ');
+  document.querySelectorAll('.chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      player.rate = Number(chip.dataset.r);
+      document.querySelectorAll('.chip').forEach((other) => other.classList.toggle('on', other === chip));
+    });
+  });
+
+  $('scrub').max = FRAMES - 1;
+  $('scrub').addEventListener('input', (e) => seek(Number(e.target.value)));
+  $('restart').addEventListener('click', () => seek(0));
+  $('play').addEventListener('click', () => {
+    if (player.frame >= FRAMES - 1) player.frame = 0;
+    setPlaying(!player.playing);
+  });
+  addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); $('play').click(); }
+  });
+  addEventListener('resize', () => { resize(); render(); });
+
+  const holes = DATA.holes.map((h) => `${h.code} ${h.secs} s near ${Math.round(h.from)} m`).join(', ');
+  $('note').innerHTML = 'How to read it: both cars are <b>ghosts</b>, two separate qualifying laps replayed on the same clock, so you can see where one would have been ahead of the other. '
+    + `Track colour shows who was quicker through each of ${DATA.dom.winner.length} mini sectors. `
+    + 'Public telemetry only has about 7 to 8 samples per second, so positions are interpolated between readings and braking points are accurate to roughly 10 m. '
+    + (holes ? `Shaded bands on the gap chart mark data dropouts (${holes}); treat those stretches as low confidence. ` : '')
+    + 'Data: tif1 (TracingInsights).';
+}
+
+buildPage();
+resize();
+render();
+</script>
+</body>
+</html>

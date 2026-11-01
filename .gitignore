@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+cache/
+replay.html
+notebooks/*.png
